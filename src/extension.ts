@@ -187,5 +187,3 @@ function deactivate() { }
 
 exports.activate = activate;
 exports.deactivate = deactivate;
-exports.addInstance = addInstance;
-exports.instances = instances;

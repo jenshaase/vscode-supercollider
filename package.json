@@ -2,7 +2,7 @@
     "name": "vscode-supercollider",
     "displayName": "vscode-supercollider",
     "description": "Language Server Client for SuperCollider / sclang",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "publisher": "Scott Carver",
     "homepage": "https://github.com/scztt/vscode-supercollider/blob/master/README.md",
     "license": "MIT",
@@ -36,7 +36,6 @@
                 "properties": {
                     "supercollider.sclang.cmd": {
                         "type": "string",
-                        "default": "",
                         "description": "Specifies the correct sclang command for your SuperCollider installation."
                     },
                     "supercollider.sclang.args": {
