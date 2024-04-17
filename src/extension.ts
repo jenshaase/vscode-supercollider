@@ -18,6 +18,25 @@ export async function activate(context: vscode.ExtensionContext)
     const supercolliderContext = new SuperColliderContext;
     context.subscriptions.push(supercolliderContext);
 
+    vscode.languages.registerDocumentDropEditProvider({ language: 'supercollider' }, {
+        provideDocumentDropEdits: (document: TextDocument, position: Position, dataTransfer: DataTransfer, token: CancellationToken) => {
+            let files = [];
+            dataTransfer.forEach((item) => {
+                var file = item.asFile();
+                if (file) {
+                    files.push('"' + item.asFile().uri.path + '"');
+                }
+            });
+
+            if (files.length == 1) {
+                return new DocumentDropEdit(files[0]);
+            } else {
+                return new DocumentDropEdit('[' + files.join(', ') + ']');
+            }
+        }
+
+    });
+
     const doActivate = async () => {
         try
         {
