@@ -1,22 +1,24 @@
 import * as vscode from 'vscode';
-import {MarkdownString,
-        Range,
-        TextEditor} from 'vscode';
+import {
+    MarkdownString,
+    Range,
+    TextEditor
+} from 'vscode';
 import * as uuid from 'vscode-languageclient/lib/common/utils/uuid';
 import * as vscodelc from 'vscode-languageclient/node';
-import {integer,
-        ProtocolRequestType,
-        StaticRegistrationOptions,
-        TextDocumentLanguageFeature,
-        TextDocumentRegistrationOptions,
-        WorkDoneProgressOptions} from 'vscode-languageclient/node';
+import {
+    integer,
+    ProtocolRequestType,
+    StaticRegistrationOptions,
+    TextDocumentLanguageFeature,
+    TextDocumentRegistrationOptions,
+    WorkDoneProgressOptions
+} from 'vscode-languageclient/node';
 
-import {SuperColliderContext} from '../context';
+import { SuperColliderContext } from '../context';
 
-function ensure(target, key)
-{
-    if (target[key] === void 0)
-    {
+function ensure(target, key) {
+    if (target[key] === void 0) {
         target[key] = {};
     }
     return target[key];
@@ -24,86 +26,79 @@ function ensure(target, key)
 
 // These decorators are applied to evaluated regions of code during/after execution.
 const evaluateDecorator = vscode.window.createTextEditorDecorationType({
-    backgroundColor : "rgba(50, 50, 255, 0.05)",
-    isWholeLine : true,
-    rangeBehavior : vscode.DecorationRangeBehavior.ClosedClosed
+    backgroundColor: "rgba(50, 50, 255, 0.05)",
+    isWholeLine: true,
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
 });
 
-const successDecorator  = vscode.window.createTextEditorDecorationType({
-    backgroundColor : "rgba(0, 255, 200, 0.05)",
-    isWholeLine : true,
-    rangeBehavior : vscode.DecorationRangeBehavior.ClosedClosed,
- });
+const successDecorator = vscode.window.createTextEditorDecorationType({
+    backgroundColor: "rgba(0, 255, 200, 0.05)",
+    isWholeLine: true,
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+});
 
-const errorDecorator    = vscode.window.createTextEditorDecorationType({
-    backgroundColor : "rgba(255, 0, 0, 0.05)",
-    isWholeLine : true,
-    rangeBehavior : vscode.DecorationRangeBehavior.ClosedClosed
-   });
+const errorDecorator = vscode.window.createTextEditorDecorationType({
+    backgroundColor: "rgba(255, 0, 0, 0.05)",
+    isWholeLine: true,
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+});
 
-let evaluateUID         = 0;
+let evaluateUID = 0;
 
-const configuration     = vscode.workspace.getConfiguration()
-const decoratorTimeout  = 5000;
+const configuration = vscode.workspace.getConfiguration()
+const decoratorTimeout = 5000;
 
 // Start and end execution actions
-async function onEndEvaluate(textEditor: TextEditor, range: Range, responseText: string, isError: boolean, flashDelay: Promise<void>)
-{
+async function onEndEvaluate(textEditor: TextEditor, range: Range, responseText: string, isError: boolean, flashDelay: Promise<void>) {
     await flashDelay;
     textEditor.setDecorations(evaluateDecorator, []);
 
-    if (isError)
-    {
+    if (isError) {
         textEditor.setDecorations(successDecorator, [])
-        textEditor.setDecorations(errorDecorator, [ {
-                                      range : range,
-                                      hoverMessage : new MarkdownString(responseText),
-                                  } ]);
+        textEditor.setDecorations(errorDecorator, [{
+            range: range,
+            hoverMessage: new MarkdownString(responseText),
+        }]);
     }
-    else
-    {
+    else {
         textEditor.setDecorations(errorDecorator, [])
-        textEditor.setDecorations(successDecorator, [ {
-                                      range : range,
-                                      hoverMessage : new MarkdownString(responseText)
-                                  } ]);
+        textEditor.setDecorations(successDecorator, [{
+            range: range,
+            hoverMessage: new MarkdownString(responseText)
+        }]);
     }
 }
 
-function onStartEvaluate(textEditor: TextEditor, range: Range)
-{
+function onStartEvaluate(textEditor: TextEditor, range: Range) {
     let currentEvaluateUID = ++evaluateUID;
 
     textEditor.setDecorations(successDecorator, [])
     textEditor.setDecorations(errorDecorator, [])
-    textEditor.setDecorations(evaluateDecorator, [ {
-                                  range : range,
-                                  hoverMessage : "Evaluated the thing"
-                              } ]);
+    textEditor.setDecorations(evaluateDecorator, [{
+        range: range,
+        hoverMessage: "Evaluated the thing"
+    }]);
 
     setTimeout(() => {
         // Execution has timed out, so clear - don't clear if we've had another evaluate in the mean time
-        if (evaluateUID == currentEvaluateUID)
-        {
+        if (evaluateUID == currentEvaluateUID) {
             textEditor.setDecorations(evaluateDecorator, []);
         }
     }, decoratorTimeout);
 
-    const decoratorFlashTime                = configuration.get<integer>('supercollider.evaluate.flash_time', 50);
-    let evaluateFlashDelay                  = new Promise<void>((res, err) => {
+    const decoratorFlashTime = configuration.get<integer>('supercollider.evaluate.flash_time', 50);
+    let evaluateFlashDelay = new Promise<void>((res, err) => {
         setTimeout(res, decoratorFlashTime);
     });
 
     return (text: string, isError: boolean) => {
-        if (evaluateUID == currentEvaluateUID)
-        {
+        if (evaluateUID == currentEvaluateUID) {
             onEndEvaluate(textEditor, range, text, isError, evaluateFlashDelay)
         }
     }
 }
 
-function currentDocumentSelection()
-{
+function currentDocumentSelection() {
     const activeTextEditor = vscode.window.activeTextEditor;
     if (!activeTextEditor)
         return null;
@@ -111,124 +106,146 @@ function currentDocumentSelection()
     return activeTextEditor.selection;
 }
 
-function currentDocumentLine()
-{
+function currentDocumentLine() {
     const activeTextEditor = vscode.window.activeTextEditor;
     if (!activeTextEditor)
         return null;
 
     let selection = activeTextEditor.selection;
     let startLine = activeTextEditor.document.lineAt(selection.start);
-    let endLine   = activeTextEditor.document.lineAt(selection.end);
-    let range     = new Range(
+    let endLine = activeTextEditor.document.lineAt(selection.end);
+    let range = new Range(
         startLine.range.start,
         endLine.range.end);
 
     return range;
 }
 
-function currentDocumentRegion()
-{
+function currentDocumentRegion() {
     const activeTextEditor = vscode.window.activeTextEditor;
-    const document         = activeTextEditor.document;
+    const document = activeTextEditor.document;
 
     if (!activeTextEditor)
         return null;
 
     let selection = activeTextEditor.selection;
     let startLine = document.lineAt(selection.start);
-    let endLine   = document.lineAt(selection.end);
+    let endLine = document.lineAt(selection.end);
 
-    let startRE   = new RegExp(/^\(\s*(\/\/)?\s*(.*)\s*$/);
-    let endRE     = new RegExp(/^\)\s*\;?\s*(\/\/.*)?$/);
+    let startRE = new RegExp(/^\(\s*(\/\/)?\s*(.*)\s*$/);
+    let endRE = new RegExp(/^\)\s*\;?\s*(\/\/.*)?$/);
 
     let nestDepth = 1;
+    let parenDepth = 0;
 
-    while (!startRE.test(startLine.text))
-    {
-        if (startLine.lineNumber == 0)
-        {
+    while (!startRE.test(startLine.text)) {
+        if (startLine.lineNumber == 0) {
             startLine = null;
             break;
         }
-        else
-        {
+        else {
             startLine = document.lineAt(startLine.lineNumber - 1);
         }
     };
 
-    if (startLine !== null)
-    {
-        while (true)
-        {
-            if (startRE.test(endLine.text))
-            {
-                nestDepth++;
+    if (startLine !== null) {
+        endLine = startLine;
+
+        let inComment = false;
+        let inLineComment = false;
+        let inString = false;
+        let inSymbol = false;
+        let lastCh;
+
+        while (true) {
+            for (const ch of endLine.text) {
+                const parsing = !inComment && !inLineComment && !inString && !inSymbol;
+
+                if (!inComment && !inLineComment && !inSymbol && ch == "\"") {
+                    inString = !inString;
+                }
+                else if (!inComment && !inLineComment && !inString && ch == "\'") {
+                    inSymbol = !inSymbol;
+                }
+                else if (parsing && ch == "/" && lastCh == "/") {
+                    inLineComment = true;
+                }
+                else if (parsing && ch == "*" && lastCh == "/") {
+                    inComment = true;
+                }
+                else if (ch == "/" && lastCh == "*") {
+                    inComment = false;
+                }
+                else if (parsing && ch == "(") {
+                    parenDepth++;
+                }
+                else if (parsing && ch == ")") {
+                    parenDepth--;
+                }
+
+                lastCh = ch;
             }
 
-            if (endRE.test(endLine.text))
-            {
-                nestDepth--;
-            }
+            inLineComment = false;
+            // if (startRE.test(endLine.text))
+            // {
+            //     nestDepth++;
+            // }
 
-            if (nestDepth == 0)
-            {
+            // if (endRE.test(endLine.text))
+            // {
+            //     nestDepth--;
+            // }
+
+            if (parenDepth == 0 || nestDepth == 0) {
                 break;
             }
 
-            if (endLine.lineNumber == document.lineCount - 1)
-            {
+            if (endLine.lineNumber == document.lineCount - 1) {
                 endLine = null;
                 break;
             }
-            else
-            {
+            else {
                 endLine = document.lineAt(endLine.lineNumber + 1);
             }
         }
     }
 
-    if (startLine !== null && endLine !== null)
-    {
+    if (startLine !== null && endLine !== null) {
         let range = new Range(
             startLine.range.start,
             endLine.range.end);
 
         return range;
     }
-    else
-    {
+    else {
         return null;
     }
 }
 
-interface EvaluateSelectionProvider
-{
+interface EvaluateSelectionProvider {
     evaluateString(document: vscode.TextDocument, range: Range): vscode.ProviderResult<EvaluateSelectionRequest.EvaluateSelectionResult>;
 }
 
-export function registerEvaluateProvider(context: SuperColliderContext, provider): vscode.Disposable
-{
+export function registerEvaluateProvider(context: SuperColliderContext, provider): vscode.Disposable {
     let subscriptions: vscode.Disposable[] = [];
 
     subscriptions.push(
         vscode.commands.registerCommand(
             'supercollider.evaluateSelection',
             (inputRange) => {
-                const document   = vscode.window.activeTextEditor.document;
+                const document = vscode.window.activeTextEditor.document;
                 let range: Range = (inputRange != null)
-                                     ? new vscode.Selection(
-                                           new vscode.Position(inputRange['start']['line'], inputRange['start']['character']),
-                                           new vscode.Position(inputRange['end']['line'], inputRange['end']['character']))
-                                     : currentDocumentSelection();
+                    ? new vscode.Selection(
+                        new vscode.Position(inputRange['start']['line'], inputRange['start']['character']),
+                        new vscode.Position(inputRange['end']['line'], inputRange['end']['character']))
+                    : currentDocumentSelection();
 
-                if (range == null || range.isEmpty)
-                {
+                if (range == null || range.isEmpty) {
                     range = currentDocumentLine();
                 }
 
-                if (range !== null)
-                {
+                if (range !== null) {
                     provider.evaluateString(document, range)
                 }
             }));
@@ -238,9 +255,8 @@ export function registerEvaluateProvider(context: SuperColliderContext, provider
             'supercollider.evaluateLine',
             () => {
                 const document = vscode.window.activeTextEditor.document;
-                const range    = currentDocumentLine();
-                if (range !== null)
-                {
+                const range = currentDocumentLine();
+                if (range !== null) {
                     provider.evaluateString(document, range)
                 }
             }));
@@ -250,9 +266,8 @@ export function registerEvaluateProvider(context: SuperColliderContext, provider
             'supercollider.evaluateRegion',
             () => {
                 const document = vscode.window.activeTextEditor.document;
-                const range    = currentDocumentRegion();
-                if (range !== null)
-                {
+                const range = currentDocumentRegion();
+                if (range !== null) {
                     provider.evaluateString(document, range)
                 }
             }));
@@ -262,68 +277,60 @@ export function registerEvaluateProvider(context: SuperColliderContext, provider
     })
 }
 
-interface EvaluateSelectionOptions extends WorkDoneProgressOptions
-{
+interface EvaluateSelectionOptions extends WorkDoneProgressOptions {
 }
 
-interface EvaluateSelectionRegistrationOptions extends EvaluateSelectionOptions, TextDocumentRegistrationOptions, StaticRegistrationOptions
-{
+interface EvaluateSelectionRegistrationOptions extends EvaluateSelectionOptions, TextDocumentRegistrationOptions, StaticRegistrationOptions {
 }
 
-interface EvaluateSelectionMiddleware
-{
+interface EvaluateSelectionMiddleware {
 }
 
-namespace EvaluateSelectionRequest
-{
-export const method = 'textDocument/evaluateSelection';
+namespace EvaluateSelectionRequest {
+    export const method = 'textDocument/evaluateSelection';
 
-export interface EvaluateSelectionParams {
-    textDocument: vscodelc.TextDocumentIdentifier,
+    export interface EvaluateSelectionParams {
+        textDocument: vscodelc.TextDocumentIdentifier,
         sourceCode: string
+    }
+
+    export interface EvaluateSelectionResult {
+        compileError: string | undefined,
+        result: string | undefined,
+        error: string | undefined
+    }
+
+    export const type = new ProtocolRequestType<EvaluateSelectionParams, EvaluateSelectionResult, never, void, EvaluateSelectionRegistrationOptions>(method);
 }
 
-export interface EvaluateSelectionResult {
-    compileError: string|undefined,
-        result: string|undefined,
-        error: string|undefined
-}
-
-export const type = new ProtocolRequestType<EvaluateSelectionParams, EvaluateSelectionResult, never, void, EvaluateSelectionRegistrationOptions>(method);
-}
-
-async function evaluateString(client, document: vscode.TextDocument, range: Range): Promise<EvaluateSelectionRequest.EvaluateSelectionResult>
-{
+async function evaluateString(client, document: vscode.TextDocument, range: Range): Promise<EvaluateSelectionRequest.EvaluateSelectionResult> {
     const activeTextEditor = vscode.window.activeTextEditor;
 
     if (!activeTextEditor)
         return;
 
-    const uri           = vscode.Uri.file(document.fileName);
+    const uri = vscode.Uri.file(document.fileName);
     const docIdentifier = vscodelc.TextDocumentIdentifier.create(uri.toString());
 
-    let finishFunc      = onStartEvaluate(activeTextEditor, range);
+    let finishFunc = onStartEvaluate(activeTextEditor, range);
 
-    const result        = client.sendRequest(EvaluateSelectionRequest.type, {
-        textDocument : docIdentifier,
-        sourceCode : activeTextEditor.document.getText(range)
+    const result = client.sendRequest(EvaluateSelectionRequest.type, {
+        textDocument: docIdentifier,
+        sourceCode: activeTextEditor.document.getText(range)
     });
 
     result.then((result) => {
-        if (result.result !== undefined)
-        {
+        if (result.result !== undefined) {
             // const prefix = '⇒ ';
             // vscode.window.showInformationMessage(prefix + result.result);
             finishFunc(result.result, false);
         }
-        else if (result.compileError !== undefined)
-        {
+        else if (result.compileError !== undefined) {
             // const prefix = '⇏ ';
             // vscode.window.showErrorMessage(prefix + result.compileError);
             finishFunc(result.compileError, true);
         }
-        else if (result.error !== undefined)
-        {
+        else if (result.error !== undefined) {
             // const prefix = '⇏ ';
             // vscode.window.showErrorMessage(prefix + result.error);
             finishFunc(result.error, true);
@@ -336,38 +343,33 @@ async function evaluateString(client, document: vscode.TextDocument, range: Rang
 // @TODO A lot of boilerplate is required to register this as a feature, but in the end we just trigger the commands roughly the same way.
 // Is there benefit here, apart from that we can specify client capabilities and pass options back to our client (which we do not do now anyway...)?
 export class EvaluateSelectionFeature extends TextDocumentLanguageFeature<
-    EvaluateSelectionOptions|boolean, EvaluateSelectionRegistrationOptions, EvaluateSelectionProvider, EvaluateSelectionMiddleware>
+    EvaluateSelectionOptions | boolean, EvaluateSelectionRegistrationOptions, EvaluateSelectionProvider, EvaluateSelectionMiddleware>
 {
     _context: SuperColliderContext;
 
-    constructor(client, context: SuperColliderContext)
-    {
+    constructor(client, context: SuperColliderContext) {
         super(client, EvaluateSelectionRequest.type);
         this._context = context;
     }
-    fillClientCapabilities(capabilities)
-    {
+    fillClientCapabilities(capabilities) {
         (ensure(ensure(capabilities, 'textDocument'), 'evaluation')).evaluateSelection = true;
     }
 
-    initialize(capabilities, documentSelector)
-    {
+    initialize(capabilities, documentSelector) {
         const options = this.getRegistrationOptions(documentSelector, capabilities.executionProvider);
-        if (!options)
-        {
+        if (!options) {
             return;
         }
         this.register({
-            id : uuid.generateUuid(),
-            registerOptions : options
+            id: uuid.generateUuid(),
+            registerOptions: options
         });
     }
 
-    registerLanguageProvider(): [ vscode.Disposable, EvaluateSelectionProvider ]
-    {
+    registerLanguageProvider(): [vscode.Disposable, EvaluateSelectionProvider] {
         const provider: EvaluateSelectionProvider = {
-            evaluateString : (document: vscode.TextDocument, range: Range) => {
-                const client                   = this._client;
+            evaluateString: (document: vscode.TextDocument, range: Range) => {
+                const client = this._client;
 
                 const provideEvaluateSelection = (document: vscode.TextDocument, range: Range) => {
                     return evaluateString(client, document, range);
@@ -377,6 +379,6 @@ export class EvaluateSelectionFeature extends TextDocumentLanguageFeature<
             }
         };
 
-        return [ registerEvaluateProvider(this._context, provider), provider ];
+        return [registerEvaluateProvider(this._context, provider), provider];
     }
 };
