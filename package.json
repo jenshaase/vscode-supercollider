@@ -17,7 +17,8 @@
         "url": "https://github.com/scztt/vscode-supercollider"
     },
     "activationEvents": [
-        "onLanguage:supercollider"
+        "onLanguage:supercollider",
+        "workspaceContains:{**/.sc,**/*.scd}"
     ],
     "main": "./out/extension.js",
     "icon": "icon.png",
