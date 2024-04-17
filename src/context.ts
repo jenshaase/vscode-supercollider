@@ -1,33 +1,41 @@
 import * as cp from 'child_process';
 import * as dgram from 'dgram';
 import * as vscode from 'vscode';
-import {Disposable,
-        workspace} from 'vscode';
-import {ExecuteCommandRequest,
-        LanguageClient,
-        LanguageClientOptions,
-        MessageTransports,
-        ServerOptions} from 'vscode-languageclient/node';
+import {
+    Disposable,
+    workspace
+} from 'vscode';
+import {
+    ExecuteCommandRequest,
+    LanguageClient,
+    LanguageClientOptions,
+    MessageTransports,
+    ServerOptions
+} from 'vscode-languageclient/node';
 
-import {EvaluateSelectionFeature} from './commands/evaluate';
+import { EvaluateSelectionFeature } from './commands/evaluate';
 import * as defaults from './util/defaults';
 import { getSclangPath } from './util/sclang';
-import {UDPMessageReader,
-        UDPMessageWriter} from './util/readerWriter';
+import {
+    UDPMessageReader,
+    UDPMessageWriter
+} from './util/readerWriter';
 
 const lspAddress = '127.0.0.1';
 
-export class SuperColliderContext implements Disposable
-{
+export class SuperColliderContext implements Disposable {
     subscriptions: vscode.Disposable[] = [];
     client!: LanguageClient;
     evaluateSelectionFeature!: EvaluateSelectionFeature;
     sclangProcess: cp.ChildProcess;
     lspTokenPath: string;
     outputChannel: vscode.OutputChannel;
+    globalState: vscode.Memento;
     readerSocket: dgram.Socket;
+    suggestedServerPortRange: [number, number];
     activated: boolean = false;
 
+    async processOptions(readPort: number, writePort: number) {
         const configuration = workspace.getConfiguration()
 
         const sclangPath = await getSclangPath()
@@ -55,9 +63,13 @@ export class SuperColliderContext implements Disposable
         }
 
         let env = process.env;
+        env['SCLANG_LSP_ENABLE'] = '1';
+        env['SCLANG_LSP_SERVERPORT'] = readPort.toString();
+        env['SCLANG_LSP_CLIENTPORT'] = writePort.toString();
+        env['SCLANG_LSP_LOGLEVEL'] = configuration.get<string>('supercollider.languageServerLogLevel')
 
         let spawnOptions: cp.SpawnOptions = {
-            env : Object.assign(env, sclangEnv)
+            env: Object.assign(env, sclangEnv)
             // cwd?: string;
             // stdio?: any;
             // detached?: boolean;
@@ -74,47 +86,40 @@ export class SuperColliderContext implements Disposable
                 ...args,
                 ...['-i', 'vscode',
                     '-l', sclangConfYaml]
-                ],
+            ],
             options: spawnOptions
         };
     }
 
-    disposeProcess()
-    {
-        if (this.sclangProcess)
-        {
+    disposeProcess() {
+        if (this.sclangProcess) {
             this.sclangProcess.kill();
             this.sclangProcess = null;
         }
     }
 
-    async createProcess(readPort: number, writePort: number)
-    {
-        if (this.sclangProcess)
-        {
+    async createProcess(readPort: number, writePort: number) {
+        if (this.sclangProcess) {
             this.sclangProcess.kill()
         }
 
-        let options       = await this.processOptions(readPort, writePort);
+        let options = await this.processOptions(readPort, writePort);
         let sclangProcess = cp.spawn(options.command, options.args, options.options);
 
-        if (!sclangProcess || !sclangProcess.pid)
-        {
+        if (!sclangProcess || !sclangProcess.pid) {
             return null;
         }
 
         return sclangProcess;
     }
 
-    async cleanup()
-    {
+    async cleanup() {
         this.activated = false;
 
-        if (this.client?.isRunning())
-        {
+        if (this.client?.isRunning()) {
             await this.client.stop();
         }
-            
+
         this.disposeProcess();
         // this.evaluateSelectionFeature.dispose();
         this.subscriptions.forEach((d) => {
@@ -127,15 +132,26 @@ export class SuperColliderContext implements Disposable
         return this.cleanup()
     }
 
-    async activate(globalStoragePath: string, outputChannel: vscode.OutputChannel, workspaceState: vscode.Memento)
-    {
-        let that           = this;
+    initializationOptions() {
+        return {
+            suggestedServerPortRange: this.suggestedServerPortRange
+        }
+    }
+
+    async activate(globalStoragePath: string, outputChannel: vscode.OutputChannel, globalState: vscode.Memento) {
+        let that = this;
         this.cleanup();
 
+        this.globalState = globalState;
         this.outputChannel = outputChannel;
         outputChannel.show();
 
-        const serverOptions: ServerOptions = function() {
+        const serverPortIncrement = 10;
+        const serverPort = this.globalState.get<number>('supercollider.serverPort', 57120);
+        this.suggestedServerPortRange = [serverPort, serverPort + serverPortIncrement];
+        this.globalState.update('supercollider.serverPort', serverPort + serverPortIncrement);
+
+        const serverOptions: ServerOptions = function () {
             // @TODO what if terminal launch fails?
 
             const configuration = workspace.getConfiguration()
@@ -148,58 +164,57 @@ export class SuperColliderContext implements Disposable
                     })
                 });
                 let writerSocket = new Promise<dgram.Socket>((resolve, reject) => {
-                                       let socket = dgram.createSocket('udp4');
-                                       socket.bind({
-                                           address : lspAddress,
-                                           exclusive : false
-                                       },
-                                                   () => {
-                                                       resolve(socket);
-                                                   })
-                                   }).then((socket) => {
+                    let socket = dgram.createSocket('udp4');
+                    socket.bind({
+                        address: lspAddress,
+                        exclusive: false
+                    },
+                        () => {
+                            resolve(socket);
+                        })
+                }).then((socket) => {
                     // SUBTLE: SuperCollider cannot open port=0 (e.g. OS assigneded) ports. So, we stand a better chance of
                     //         finding an open port by opening on our end, then immediately closing and pointing SC that one.
                     var port = socket.address().port;
                     return new Promise<number>((resolve, reject) => {
-                                                   socket.close(() => {
-                                                       resolve(port);
-                                                   })})
+                        socket.close(() => {
+                            resolve(port);
+                        })
+                    })
                 });
 
-                Promise.all([ readerSocket, writerSocket ]).then(async (sockets) => {
-                    let socket        = sockets[0];
+                Promise.all([readerSocket, writerSocket]).then(async (sockets) => {
+                    let socket = sockets[0];
                     that.readerSocket = socket;
 
-                    let readerPort    = socket.address().port;
-                    let writerPort    = sockets[1];
-                    let reader        = new UDPMessageReader(socket);
-                    let writer        = new UDPMessageWriter(socket, writerPort, lspAddress)
+                    let readerPort = socket.address().port;
+                    let writerPort = sockets[1];
+                    let reader = new UDPMessageReader(socket);
+                    let writer = new UDPMessageWriter(socket, writerPort, lspAddress)
 
                     let sclangProcess = that.sclangProcess = await that.createProcess(readerPort, writerPort);
 
-                    if (!sclangProcess)
-                    {
+                    if (!sclangProcess) {
                         err("Problem launching sclang executable. Check your settings to ensure `supercollider.sclang.cmd` points to a valid sclang path.")
                     }
 
-                    const streamInfo: MessageTransports = {reader : reader, writer : writer, detached : false};
+                    const streamInfo: MessageTransports = { reader: reader, writer: writer, detached: false };
 
                     sclangProcess.stdout
                         .on('data', data => {
                             let string = data.toString();
-                            if (string.indexOf('***LSP READY***') != -1)
-                            {
+                            if (string.indexOf('***LSP READY***') != -1) {
                                 res(streamInfo);
                             }
                             outputChannel.append(string);
                         })
                         .on('end', () => {
-                            // outputChannel.append("sclang exited");
+                            outputChannel.append("\nsclang exited\n");
                             reader.dispose();
                             writer.dispose()
                         })
                         .on('error', (err) => {
-                            // outputChannel.append("sclang errored: " + err);
+                            outputChannel.append("\nsclang errored: " + err);
                             reader.dispose();
                             writer.dispose()
                         });
@@ -214,37 +229,37 @@ export class SuperColliderContext implements Disposable
         };
 
         const clientOptions: LanguageClientOptions = {
-            documentSelector : [ {scheme : 'file', language : 'supercollider'} ],
-            synchronize : {
-                fileEvents : workspace.createFileSystemWatcher('**/*.*'),
+            documentSelector: [{ scheme: 'file', language: 'supercollider' }],
+            synchronize: {
+                fileEvents: workspace.createFileSystemWatcher('**/*.*'),
             },
-            outputChannel : outputChannel,
-            markdown : {
-                supportHtml : true,
-                isTrusted : true
-            }
+            outputChannel: outputChannel,
+            markdown: {
+                supportHtml: true,
+                isTrusted: true
+            },
+            initializationOptions: this.initializationOptions()
         };
 
-        let client                     = new LanguageClient('SuperColliderLanguageServer', 'SuperCollider Language Server', serverOptions, clientOptions, true);
+        let client = new LanguageClient('SuperColliderLanguageServer', 'SuperCollider Language Server', serverOptions, clientOptions, true);
         // client.trace                   = Trace.Verbose;
 
         const evaluateSelectionFeature = new EvaluateSelectionFeature(client, this);
-        var [disposable, provider]     = evaluateSelectionFeature.registerLanguageProvider();
+        var [disposable, provider] = evaluateSelectionFeature.registerLanguageProvider();
         this.subscriptions.push(disposable);
 
         client.registerFeature(evaluateSelectionFeature);
 
-        this.client                   = client;
+        this.client = client;
         this.evaluateSelectionFeature = evaluateSelectionFeature;
 
         await this.client.start();
         this.activated = true;
     }
 
-    executeCommand(command: string)
-    {
-        let result = this.client.sendRequest(ExecuteCommandRequest.type, {command});
-        result.then(function(result) {
+    executeCommand(command: string) {
+        let result = this.client.sendRequest(ExecuteCommandRequest.type, { command });
+        result.then(function (result) {
             console.log(result)
         });
     }
