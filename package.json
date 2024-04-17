@@ -51,8 +51,12 @@
                     },
                     "supercollider.sclang.confYaml": {
                         "type": "string",
-                        "default": "",
-                        "description": "Path to sclang_conf.yaml"
+                        "description": "Path to sclang_conf.yaml (leave blank to use the platform default path)"
+                    },
+                    "supercollider.sclang.loadWorkspaceConfYaml": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "If a sclang_conf.yaml file is found in the current workspace, use this when launching sclang."
                     },
                     "supercollider.sclang.evaluateResultPrefix": {
                         "type": "string",

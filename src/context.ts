@@ -28,20 +28,33 @@ export class SuperColliderContext implements Disposable
     readerSocket: dgram.Socket;
     activated: boolean = false;
 
-    async processOptions(readPort: number, writePort: number)
-    {
-        const configuration               = workspace.getConfiguration()
+        const configuration = workspace.getConfiguration()
 
-        const sclangPath                  = await getSclangPath()
-        const sclangConfYaml              = configuration.get<string>('supercollider.sclang.confYaml', defaults.userConfigPath())
-        const sclangArgs                  = configuration.get<Array<string>>('supercollider.sclang.args')
-        const sclangEnv                   = configuration.get<Object>('supercollider.sclang.environment')
+        const sclangPath = await getSclangPath()
+        let sclangConfYaml = configuration.get<string>('supercollider.sclang.confYaml', defaults.userConfigPath())
+        const loadWorkspaceYaml = configuration.get<boolean>('supercollider.sclang.loadWorkspaceConfYaml', false)
+        const sclangArgs = configuration.get<Array<string>>('supercollider.sclang.args')
+        const sclangEnv = configuration.get<Object>('supercollider.sclang.environment')
 
-        let env                           = process.env;
-        env['SCLANG_LSP_ENABLE']          = '1';
-        env['SCLANG_LSP_SERVERPORT']      = readPort.toString();
-        env['SCLANG_LSP_CLIENTPORT']      = writePort.toString();
-        env['SCLANG_LSP_LOGLEVEL']        = configuration.get<string>('supercollider.languageServerLogLevel')
+        if (loadWorkspaceYaml) {
+            let confFiles = []
+
+            const folders = workspace.workspaceFolders || [];
+            for (let folder of folders) {
+                let found = await workspace.findFiles(new vscode.RelativePattern(folder, "sclang_conf.yaml"));
+                confFiles.push(...found);
+            }
+
+            if (confFiles.length == 1) {
+                sclangConfYaml = confFiles[0].fsPath;
+            } else if (confFiles.length > 1) {
+                vscode.window.showErrorMessage("Multiple sclang_conf.yaml files found in workspace. Please set supercollider.sclang.confYaml to the desired file.")
+            } else {
+                // No files, so use the default
+            }
+        }
+
+        let env = process.env;
 
         let spawnOptions: cp.SpawnOptions = {
             env : Object.assign(env, sclangEnv)
@@ -53,12 +66,16 @@ export class SuperColliderContext implements Disposable
             // shell?: boolean | string;
         }
 
+        let args = sclangArgs || [];
+
         return {
-            command : sclangPath,
-            args : [...sclangArgs,
-                    ...['-i', 'vscode',
-                        '-l', sclangConfYaml] ],
-            options : spawnOptions
+            command: sclangPath,
+            args: [
+                ...args,
+                ...['-i', 'vscode',
+                    '-l', sclangConfYaml]
+                ],
+            options: spawnOptions
         };
     }
 
