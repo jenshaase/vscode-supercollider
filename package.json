@@ -18,7 +18,7 @@
     },
     "activationEvents": [
         "onLanguage:supercollider",
-        "workspaceContains:{**/.sc,**/*.scd}"
+        "workspaceContains:**/{*.sc,*.scd}"
     ],
     "main": "./out/extension.js",
     "icon": "icon.png",
@@ -44,7 +44,7 @@
                         "description": "Additional sclang command line args"
                     },
                     "supercollider.sclang.environment": {
-                        "type": "Object",
+                        "type": "object",
                         "default": {},
                         "description": "sclang environment variables"
                     },
