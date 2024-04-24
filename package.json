@@ -67,6 +67,11 @@
                         "default": true,
                         "description": "Post the results of interpreted code"
                     },
+                    "supercollider.sclang.autoAllocateServerPorts": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Automatically assign unique server ports for each sclang instance. This makes it easier to use multiple SuperCollider workspaces with their own Servers.\n\nNOTE: This will result in Servers that do not use the standard 57100 port!"
+                    },
                     "supercollider.languageServerLogLevel": {
                         "type": "string",
                         "default": "error",

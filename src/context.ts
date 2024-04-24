@@ -23,6 +23,42 @@ import {
 
 const lspAddress = '127.0.0.1';
 
+const startingPort = 58110;
+const portIncrement = 10;
+const serverPortKey = 'supercollider.serverPortAllocations.1';
+
+class ServerPortRange implements Disposable {
+    start: number;
+    globalState: vscode.Memento;
+
+    constructor(globalState: vscode.Memento) {
+        const allocatedPorts = globalState.get<Array<number>>(serverPortKey, Array<number>());
+        this.start = this.findFreePort(allocatedPorts);
+        globalState.update(serverPortKey, allocatedPorts.concat(this.start));
+    }
+
+    findFreePort(allocatedPorts: Array<number>) {
+        let port = startingPort;
+
+        while (allocatedPorts.includes(port)) {
+            port += portIncrement;
+        }
+
+        return port;
+    }
+
+    portRange() {
+        return [this.start, this.start + portIncrement];
+    }
+
+    dispose() {
+        const allocatedPorts = this.globalState.get<Array<number>>(serverPortKey, []);
+        const index = allocatedPorts.indexOf(this.start);
+        if (index > -1) { allocatedPorts.splice(index, 1); }
+        this.globalState.update(serverPortKey, allocatedPorts);
+    }
+};
+
 export class SuperColliderContext implements Disposable {
     subscriptions: vscode.Disposable[] = [];
     client!: LanguageClient;
@@ -32,7 +68,7 @@ export class SuperColliderContext implements Disposable {
     outputChannel: vscode.OutputChannel;
     globalState: vscode.Memento;
     readerSocket: dgram.Socket;
-    suggestedServerPortRange: [number, number];
+    serverPorts: ServerPortRange | null;
     activated: boolean = false;
 
     async processOptions(readPort: number, writePort: number) {
@@ -113,12 +149,8 @@ export class SuperColliderContext implements Disposable {
         return sclangProcess;
     }
 
-    async cleanup() {
+    async cleanup(processDied = false) {
         this.activated = false;
-
-        if (this.client?.isRunning()) {
-            await this.client.stop();
-        }
 
         this.disposeProcess();
         // this.evaluateSelectionFeature.dispose();
@@ -133,9 +165,13 @@ export class SuperColliderContext implements Disposable {
     }
 
     initializationOptions() {
-        return {
-            suggestedServerPortRange: this.suggestedServerPortRange
+        let options = {}
+
+        if (!!this.serverPorts) {
+            options['suggestedServerPortRange'] = this.serverPorts.portRange();
         }
+
+        return options;
     }
 
     async activate(globalStoragePath: string, outputChannel: vscode.OutputChannel, globalState: vscode.Memento) {
@@ -146,10 +182,9 @@ export class SuperColliderContext implements Disposable {
         this.outputChannel = outputChannel;
         outputChannel.show();
 
-        const serverPortIncrement = 10;
-        const serverPort = this.globalState.get<number>('supercollider.serverPort', 57120);
-        this.suggestedServerPortRange = [serverPort, serverPort + serverPortIncrement];
-        this.globalState.update('supercollider.serverPort', serverPort + serverPortIncrement);
+        if (workspace.getConfiguration().get<boolean>('supercollider.sclang.autoAllocateServerPorts', true)) {
+            this.serverPorts = new ServerPortRange(globalState);
+        }
 
         const serverOptions: ServerOptions = function () {
             // @TODO what if terminal launch fails?
