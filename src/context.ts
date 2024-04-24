@@ -158,9 +158,14 @@ export class SuperColliderContext implements Disposable {
             d.dispose();
         });
         this.subscriptions = [];
+
+        if (this.client?.isRunning()) {
+            await this.client.stop(processDied ? 0 : 2000);
+        }
     };
 
     dispose() {
+        this.outputChannel.dispose();
         return this.cleanup()
     }
 
@@ -243,10 +248,11 @@ export class SuperColliderContext implements Disposable {
                             }
                             outputChannel.append(string);
                         })
-                        .on('end', () => {
+                        .on('end', async () => {
                             outputChannel.append("\nsclang exited\n");
                             reader.dispose();
-                            writer.dispose()
+                            writer.dispose();
+                            await that.cleanup(true);
                         })
                         .on('error', (err) => {
                             outputChannel.append("\nsclang errored: " + err);
