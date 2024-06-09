@@ -9,6 +9,7 @@ import * as help from './commands/help'
 import { SuperColliderContext } from './context';
 import * as defaults from './util/defaults'
 import { getSclangPath } from './util/sclang';
+import { ServerStatusBar } from './ServerStatusBar';
 
 export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('supercollider', 'supercollider-log');
@@ -16,6 +17,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const supercolliderContext = new SuperColliderContext;
     context.subscriptions.push(supercolliderContext);
+
+    const serverStatusBar = new ServerStatusBar();
 
     vscode.languages.registerDocumentDropEditProvider({ language: 'supercollider' }, {
         provideDocumentDropEdits: (document: TextDocument, position: Position, dataTransfer: DataTransfer, token: CancellationToken) => {
@@ -39,6 +42,9 @@ export async function activate(context: vscode.ExtensionContext) {
         try {
             await supercolliderContext.activate(context.globalStoragePath, outputChannel, context.globalState);
             help.activate(supercolliderContext);
+            supercolliderContext.client.onNotification('supercollider/serverStatus', (data) => {
+                serverStatusBar.updateStatusBar(data);
+            });
         }
         catch (error) {
             outputChannel.append(error)
@@ -177,6 +183,9 @@ export async function activate(context: vscode.ExtensionContext) {
         async () => {
             supercolliderContext.executeCommand('supercollider.internal.cmdPeriod')
         }));
+
+	context.subscriptions.push(serverStatusBar.getStatusBarItem());
+    serverStatusBar.updateStatusBar({running: false, unresponsive: false, avgCPU: 0, peakCPU: 0, numUGens: 0, numSynths: 0, numGroups: 0, numSynthDefs: 0});
 
     doActivate();
 
