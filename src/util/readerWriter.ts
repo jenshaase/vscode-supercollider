@@ -27,7 +27,6 @@ export class UDPMessageReader extends AbstractMessageReader {
 
         this.socket.on('message', (msg, rinfo) => {
             if (!!this.callback) {
-                console.log(`Received: ${msg.length} bytes`);
                 this.buffered = new Uint8Array([...this.buffered, ...msg]);
 
                 if (this.contentLength === null) {
@@ -36,7 +35,6 @@ export class UDPMessageReader extends AbstractMessageReader {
                     let match = str.match(headerRe)
                     if (match.length > 0) {
                         const contentLength = this.contentLength = parseInt(match[1]);
-                        console.log(`contentLength: ${contentLength} bytes`);
                         let headerLength = match[0].length;
                         this.buffered = this.buffered.slice(match.index + headerLength);
                     }
@@ -44,17 +42,13 @@ export class UDPMessageReader extends AbstractMessageReader {
 
                 // const bufferSize = getBinarySize(this.buffered);
                 const bufferSize = this.buffered.length;
-                console.log(`buffer is now : ${bufferSize} bytes`);
                 if (bufferSize >= this.contentLength) {
-                    console.log(`buffer is filled`);
                     let contentLength = this.contentLength;
                     let message = decoder.decode(this.buffered.slice(0, this.contentLength));
                     this.buffered = this.buffered.slice(this.contentLength);
                     this.contentLength = null;
 
                     let json = JSON.parse(message);
-
-                    console.log(`unprocessed buffer remaining : ${this.buffered.length} bytes`);
 
                     this.callback(json);
                 }
