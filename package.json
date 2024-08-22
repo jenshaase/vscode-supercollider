@@ -80,7 +80,25 @@
                     "supercollider.languageServerLogLevel": {
                         "type": "string",
                         "default": "error",
+                        "enum": [
+                            "all",
+                            "debug",
+                            "info",
+                            "warning",
+                            "error",
+                            "off"
+                        ],
                         "description": "Log level for sclang language server {info, debug, warning, error, critical, all}"
+                    },
+                    "supercollider.sclang.useGlobalStartupFile": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Use the global startup file (startup.scd) when starting sclang."
+                    },
+                    "supercollider.sclang.useWorkspaceStartupFile": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Use the workspace startup file (startup.scd) when starting sclang."
                     }
                 }
             }
