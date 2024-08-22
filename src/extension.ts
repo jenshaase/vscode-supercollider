@@ -9,6 +9,7 @@ import * as help from './commands/help'
 import { SuperColliderContext } from './context';
 import * as defaults from './util/defaults'
 import { getSclangPath } from './util/sclang';
+import { SuperColliderFormatter } from './providers/FormattingProvider';
 
 export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('supercollider', 'supercollider-log');
@@ -34,6 +35,18 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+
+    const configuration = workspace.getConfiguration();
+    const formatterPath = configuration.get<string>('supercollider.sclang.formatterCmd');
+    if (formatterPath && formatterPath.length > 0) {
+        const formatter = new SuperColliderFormatter(
+            outputChannel,
+            formatterPath,
+            4, true
+        );
+        context.subscriptions.push(formatter);
+        vscode.languages.registerDocumentFormattingEditProvider({ language: 'supercollider' }, formatter);
+    }
 
     const doActivate = async () => {
         try {

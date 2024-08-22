@@ -62,6 +62,11 @@
                         "default": "> ",
                         "description": "Format string for evaluated code result"
                     },
+                    "supercollider.sclang.formatterCmd": {
+                        "type": "string",
+                        "default": "",
+                        "descriotion": "Path to sclang-format executable"
+                    },
                     "supercollider.sclang.postEvaluateResults": {
                         "type": "boolean",
                         "default": true,
