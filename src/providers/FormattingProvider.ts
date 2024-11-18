@@ -102,5 +102,7 @@ export class SuperColliderFormatter implements DocumentFormattingEditProvider, D
         this.listeners[0].text += stream;
     }
 
-    dispose() { }
+    dispose() {
+        this.end()
+    }
 }
