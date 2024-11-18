@@ -261,11 +261,11 @@ export class SuperColliderContext implements Disposable {
                             }
                             outputChannel.append(string);
                         })
-                        .on('end', async () => {
+                        .on('end', async (args) => {
                             outputChannel.append("\nsclang exited\n");
                             reader.dispose();
                             writer.dispose();
-                            // await that.cleanup(true);
+                            await that.cleanup(true);
                         })
                         .on('error', async (err) => {
                             outputChannel.append("\nsclang errored: " + err);
