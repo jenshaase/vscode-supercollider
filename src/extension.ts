@@ -15,8 +15,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('supercollider', 'supercollider-log');
     context.subscriptions.push(outputChannel);
 
-    const supercolliderContext = new SuperColliderContext;
-    context.subscriptions.push(supercolliderContext);
+    let supercolliderContext: SuperColliderContext = null;
 
     vscode.languages.registerDocumentDropEditProvider({ language: 'supercollider' }, {
         provideDocumentDropEdits: (document: TextDocument, position: Position, dataTransfer: DataTransfer, token: CancellationToken) => {
@@ -50,6 +49,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const doActivate = async () => {
         try {
+            if (supercolliderContext) {
+                help.deactivate(supercolliderContext)
+                supercolliderContext.dispose();
+            }
+
+            supercolliderContext = new SuperColliderContext();
             await supercolliderContext.activate(context.globalStoragePath, outputChannel, context.globalState);
             help.activate(supercolliderContext);
         }
@@ -60,7 +65,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // An empty place holder for the activate command, otherwise we'll get an
     // "command is not registered" error.
-    context.subscriptions.push(vscode.commands.registerCommand('supercollider.activate', async () => { }));
 
     context.subscriptions.push(vscode.commands.registerCommand(
         'supercollider.updateLanguageServer',
@@ -95,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.commands.registerCommand(
         'supercollider.restart',
         async () => {
-            if (!supercolliderContext.activated) {
+            if (!supercolliderContext || !supercolliderContext.activated) {
                 await doActivate();
             }
             else if (supercolliderContext.client?.isRunning()) {
