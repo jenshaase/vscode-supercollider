@@ -72,6 +72,11 @@
                         "default": true,
                         "description": "Post the results of interpreted code"
                     },
+                    "supercollider.sclang.improvedErrorReports": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Allow LanguageServer.quark to handle error backtraces. This feature is experimental, but can produce much more comprehensible error reports."
+                    },
                     "supercollider.sclang.autoAllocateServerPorts": {
                         "type": "boolean",
                         "default": false,
