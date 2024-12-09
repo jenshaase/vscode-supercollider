@@ -3,7 +3,7 @@
     "displayName": "vscode-supercollider",
     "description": "Language Server Client for SuperCollider / sclang",
     "version": "0.0.3",
-    "publisher": "Scott Carver",
+    "publisher": "ScottCarver",
     "homepage": "https://github.com/scztt/vscode-supercollider/blob/master/README.md",
     "license": "MIT",
     "engines": {
@@ -62,10 +62,20 @@
                         "default": "> ",
                         "description": "Format string for evaluated code result"
                     },
+                    "supercollider.sclang.formatterCmd": {
+                        "type": "string",
+                        "default": "",
+                        "descriotion": "Path to sclang-format executable"
+                    },
                     "supercollider.sclang.postEvaluateResults": {
                         "type": "boolean",
                         "default": true,
                         "description": "Post the results of interpreted code"
+                    },
+                    "supercollider.sclang.improvedErrorReports": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Allow LanguageServer.quark to handle error backtraces. This feature is experimental, but can produce much more comprehensible error reports."
                     },
                     "supercollider.sclang.autoAllocateServerPorts": {
                         "type": "boolean",
@@ -75,7 +85,25 @@
                     "supercollider.languageServerLogLevel": {
                         "type": "string",
                         "default": "error",
+                        "enum": [
+                            "all",
+                            "debug",
+                            "info",
+                            "warning",
+                            "error",
+                            "off"
+                        ],
                         "description": "Log level for sclang language server {info, debug, warning, error, critical, all}"
+                    },
+                    "supercollider.sclang.useGlobalStartupFile": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Use the global startup file (startup.scd) when starting sclang."
+                    },
+                    "supercollider.sclang.useWorkspaceStartupFile": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Use the workspace startup file (startup.scd) when starting sclang."
                     }
                 }
             }

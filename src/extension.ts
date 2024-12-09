@@ -10,13 +10,13 @@ import { SuperColliderContext } from './context';
 import * as defaults from './util/defaults'
 import { getSclangPath } from './util/sclang';
 import { ServerStatusBar } from './ServerStatusBar';
+import { SuperColliderFormatter } from './providers/FormattingProvider';
 
 export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('supercollider', 'supercollider-log');
     context.subscriptions.push(outputChannel);
 
-    const supercolliderContext = new SuperColliderContext;
-    context.subscriptions.push(supercolliderContext);
+    let supercolliderContext: SuperColliderContext = null;
 
     const serverStatusBar = new ServerStatusBar();
 
@@ -38,8 +38,26 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    const configuration = workspace.getConfiguration();
+    const formatterPath = configuration.get<string>('supercollider.sclang.formatterCmd');
+    if (formatterPath && formatterPath.length > 0) {
+        const formatter = new SuperColliderFormatter(
+            outputChannel,
+            formatterPath,
+            4, true
+        );
+        context.subscriptions.push(formatter);
+        vscode.languages.registerDocumentFormattingEditProvider({ language: 'supercollider' }, formatter);
+    }
+
     const doActivate = async () => {
         try {
+            if (supercolliderContext) {
+                help.deactivate(supercolliderContext)
+                supercolliderContext.dispose();
+            }
+
+            supercolliderContext = new SuperColliderContext();
             await supercolliderContext.activate(context.globalStoragePath, outputChannel, context.globalState);
             help.activate(supercolliderContext);
             supercolliderContext.client.onNotification('supercollider/serverStatus', (data) => {
@@ -53,7 +71,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // An empty place holder for the activate command, otherwise we'll get an
     // "command is not registered" error.
-    context.subscriptions.push(vscode.commands.registerCommand('supercollider.activate', async () => { }));
 
     context.subscriptions.push(vscode.commands.registerCommand(
         'supercollider.updateLanguageServer',
@@ -88,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.commands.registerCommand(
         'supercollider.restart',
         async () => {
-            if (!supercolliderContext.activated) {
+            if (!supercolliderContext || !supercolliderContext.activated) {
                 await doActivate();
             }
             else if (supercolliderContext.client?.isRunning()) {

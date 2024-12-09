@@ -26,15 +26,25 @@ const lspAddress = '127.0.0.1';
 const startingPort = 58110;
 const portIncrement = 10;
 const serverPortKey = 'supercollider.serverPortAllocations.1';
+const serverPortSession = 'supercollider.serverPortAllocationsSession.1';
 
 class ServerPortRange implements Disposable {
     start: number;
     globalState: vscode.Memento;
 
     constructor(globalState: vscode.Memento) {
-        const allocatedPorts = globalState.get<Array<number>>(serverPortKey, Array<number>());
+        this.globalState = globalState;
+        const currentSessionID = this.globalState.get<string>(serverPortSession, "");
+        if (vscode.env.sessionId != currentSessionID) {
+            console.log("New session, so clearing port allocations");
+            this.globalState.update(serverPortKey, Array<number>());
+        }
+        this.globalState.update(serverPortSession, vscode.env.sessionId);
+
+        const allocatedPorts = this.globalState.get<Array<number>>(serverPortKey, Array<number>());
+        console.log(`Previously allocated ports: ${allocatedPorts}`);
         this.start = this.findFreePort(allocatedPorts);
-        globalState.update(serverPortKey, allocatedPorts.concat(this.start));
+        this.globalState.update(serverPortKey, allocatedPorts.concat(this.start));
     }
 
     findFreePort(allocatedPorts: Array<number>) {
@@ -165,12 +175,15 @@ export class SuperColliderContext implements Disposable {
     };
 
     dispose() {
-        this.outputChannel.dispose();
+        this.serverPorts.dispose();
         return this.cleanup()
     }
 
-    initializationOptions() {
-        let options = {}
+    initializationOptions(configuration: vscode.WorkspaceConfiguration) {
+        let options = {
+            useGlobalStartupFile: configuration.get<boolean>('supercollider.sclang.useGlobalStartupFile', true),
+            useWorkspaceStartupFile: configuration.get<boolean>('supercollider.sclang.useWorkspaceStartupFile', true),
+        };
 
         if (!!this.serverPorts) {
             options['suggestedServerPortRange'] = this.serverPorts.portRange();
@@ -181,6 +194,10 @@ export class SuperColliderContext implements Disposable {
 
     async activate(globalStoragePath: string, outputChannel: vscode.OutputChannel, globalState: vscode.Memento) {
         let that = this;
+        // SUBTLE: We should mark ourselves as activated as soon as we begin doing anything - otherwise,
+        //         in case of error, it will look like things are working but they will be unresponsive.
+        this.activated = true;
+
         this.cleanup();
 
         this.globalState = globalState;
@@ -230,7 +247,7 @@ export class SuperColliderContext implements Disposable {
                     let readerPort = socket.address().port;
                     let writerPort = sockets[1];
                     let reader = new UDPMessageReader(socket);
-                    let writer = new UDPMessageWriter(socket, writerPort, lspAddress)
+                    let writer = new UDPMessageWriter(socket, writerPort, lspAddress);
 
                     let sclangProcess = that.sclangProcess = await that.createProcess(readerPort, writerPort);
 
@@ -243,24 +260,24 @@ export class SuperColliderContext implements Disposable {
                     sclangProcess.stdout
                         .on('data', data => {
                             let string = data.toString();
+                            outputChannel.append(string);
+
                             if (string.indexOf('***LSP READY***') != -1) {
                                 res(streamInfo);
                             }
-                            outputChannel.append(string);
                         })
-                        .on('end', async () => {
+                        .on('end', async (args) => {
                             outputChannel.append("\nsclang exited\n");
                             reader.dispose();
                             writer.dispose();
-                            await that.cleanup(true);
                         })
-                        .on('error', (err) => {
+                        .on('error', async (err) => {
                             outputChannel.append("\nsclang errored: " + err);
                             reader.dispose();
                             writer.dispose()
                         });
 
-                    sclangProcess.on('exit', (code, signal) => {
+                    sclangProcess.on('exit', async (code, signal) => {
                         sclangProcess = null;
                         reader.dispose();
                         writer.dispose()
@@ -272,14 +289,14 @@ export class SuperColliderContext implements Disposable {
         const clientOptions: LanguageClientOptions = {
             documentSelector: [{ scheme: 'file', language: 'supercollider' }],
             synchronize: {
-                fileEvents: workspace.createFileSystemWatcher('**/*.*'),
+                fileEvents: workspace.createFileSystemWatcher('**/*.{sc,scd}'),
             },
             outputChannel: outputChannel,
             markdown: {
                 supportHtml: true,
                 isTrusted: true
             },
-            initializationOptions: this.initializationOptions()
+            initializationOptions: this.initializationOptions(workspace.getConfiguration())
         };
 
         let client = new LanguageClient('SuperColliderLanguageServer', 'SuperCollider Language Server', serverOptions, clientOptions, true);
@@ -295,7 +312,8 @@ export class SuperColliderContext implements Disposable {
         this.evaluateSelectionFeature = evaluateSelectionFeature;
 
         await this.client.start();
-        this.activated = true;
+
+        outputChannel.appendLine(`Starting SuperCollider Language Server (sessionId = ${vscode.env.sessionId})`);
     }
 
     executeCommand(command: string) {
